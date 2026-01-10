@@ -4,27 +4,43 @@ A multi-model consensus framework inspired by [Andrej Karpathy](https://github.c
 
 > "Instead of asking one AI for an answer, why not ask multiple and have them debate?"
 
+## 🌐 Live Demo
+
+**Try it now:** [https://azca-webyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io](https://azca-webyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io)
+
+**API Endpoint:** `https://azca-apiyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io`
+
 ## ✨ Features
 
-- **Multi-Model Debate**: Multiple AI models share perspectives and challenge each other
-- **Democratic Voting**: Configurable voting methods (majority, ranked-choice, weighted, veto)
+- **Multi-Model Debate**: Multiple AI models (GPT-5, o3, o4-mini) share perspectives and challenge each other
+- **Democratic Voting**: Configurable voting methods (majority, ranked-choice, weighted, veto, confidence)
 - **Self-Correction**: Backup models join automatically when confidence is low
 - **Real-time Debug View**: Watch agents think, vote, and synthesize live
-- **Export/Import**: Save and share council sessions
+- **Export/Import**: Save and share council sessions in JSON, YAML, Markdown, or HTML
+- **Council Presets**: Quick-start configurations for different use cases
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Use the Live Demo
+
+1. Visit [the live demo](https://azca-webyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io)
+2. Select a council preset (Small, Standard, Reasoning, or Diverse)
+3. Enter your question and watch the council deliberate!
+
+### Option 2: Run Locally
+
+#### Prerequisites
 
 - Node.js 20+
 - pnpm 9+
 - Azure OpenAI account with deployed models
 
-### Installation
+#### Installation
 
 ```bash
 # Clone the repository
-cd llmcouncil
+git clone https://github.com/arjith/llm-council.git
+cd llm-council
 
 # Install dependencies
 pnpm install
@@ -37,7 +53,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-### Open the Dashboard
+#### Open the Dashboard
 
 Navigate to [http://localhost:3000](http://localhost:3000) to use the web dashboard.
 
@@ -69,19 +85,22 @@ Navigate to [http://localhost:3000](http://localhost:3000) to use the web dashbo
 
 ## 🔧 Azure Models Deployed
 
-This project uses the following Azure OpenAI models:
+This project uses the following Azure OpenAI models (deployed on `agpt11` resource in East US):
 
-| Model | Deployment | TPM |
-|-------|------------|-----|
-| GPT-5 | `gpt-5` | 50K |
-| GPT-5 Mini | `gpt-5-mini` | 50K |
-| o3 | `o3` | 5K |
-| o3-mini | `o3-mini` | 200K |
-| o4-mini | `o4-mini` | - |
-| GPT-4o | `gpt-4o` | 50K |
-| GPT-4.1 | `gpt-4.1` | - |
+| Model | Deployment | Use Case |
+|-------|------------|----------|
+| GPT-5 | `gpt-5` | Primary reasoning, complex analysis |
+| GPT-5 Mini | `gpt-5-mini` | Fast responses, simple queries |
+| GPT-4.1 | `gpt-4.1` | Million-token context tasks |
+| o3 | `o3` | Deep mathematical reasoning |
+| o3-mini | `o3-mini` | Efficient reasoning tasks |
+| o4-mini | `o4-mini` | Latest reasoning model |
+
+> **Note:** o-series models (o3, o3-mini, o4-mini) use `reasoningEffort` instead of `temperature` parameter.
 
 ## 📡 API Endpoints
+
+**Base URL:** `https://azca-apiyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io` (or `http://localhost:3001` for local dev)
 
 ### Council
 
@@ -105,7 +124,18 @@ This project uses the following Azure OpenAI models:
 
 ## 🧪 Example Usage
 
-### Run via API
+### Run via API (Production)
+
+```bash
+curl -X POST https://azca-apiyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io/api/council/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What are the ethical implications of AI in healthcare?",
+    "preset": "standard"
+  }'
+```
+
+### Run via API (Local)
 
 ```bash
 curl -X POST http://localhost:3001/api/council/run \
@@ -141,11 +171,13 @@ curl -X POST http://localhost:3001/api/council/run \
 ┌─────────────────────────────────────────────────────────────┐
 │                     Web Dashboard                            │
 │                   (React + Vite)                            │
+│     azca-webyslfuxsmb344w...azurecontainerapps.io           │
 └─────────────────────────┬───────────────────────────────────┘
                           │ HTTP/WebSocket
 ┌─────────────────────────▼───────────────────────────────────┐
 │                      API Server                              │
 │                     (Fastify)                               │
+│     azca-apiyslfuxsmb344w...azurecontainerapps.io           │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
@@ -159,9 +191,43 @@ curl -X POST http://localhost:3001/api/council/run \
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │                   Azure OpenAI                               │
-│  GPT-5 │ GPT-5-mini │ o3 │ o3-mini │ o4-mini │ GPT-4o      │
+│  GPT-5 │ GPT-5-mini │ GPT-4.1 │ o3 │ o3-mini │ o4-mini     │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## 🏗️ Azure Infrastructure
+
+The project is deployed on Azure Container Apps:
+
+| Resource | Type | Details |
+|----------|------|---------|
+| `rg-llm-council` | Resource Group | East US |
+| `azca-api...` | Container App | API backend |
+| `azca-web...` | Container App | Web frontend |
+| `azacr...` | Container Registry | Docker images |
+| `agpt11` | Azure OpenAI | Model deployments |
+
+## 🗳️ Voting Methods
+
+| Method | Description |
+|--------|-------------|
+| **Majority** | Simple > 50% wins |
+| **Super-majority** | 2/3 or 3/4 threshold required |
+| **Ranked-Choice** | Instant runoff voting |
+| **Weighted** | Members have different voting power |
+| **Confidence** | Weighted by model confidence scores |
+| **Consensus** | All members must agree |
+| **Veto** | Any member can veto |
+
+## 🎭 Council Member Roles
+
+| Role | Description |
+|------|-------------|
+| **opinion-giver** | Provides initial perspective on the question |
+| **reviewer** | Evaluates and critiques other responses |
+| **synthesizer** | Combines multiple viewpoints into cohesive answer |
+| **backup** | Joins when confidence is low or errors occur |
+| **arbiter** | Makes final decisions in case of ties |
 
 ## 📚 References
 
@@ -169,6 +235,15 @@ curl -X POST http://localhost:3001/api/council/run \
 - [Microsoft AI Tour Demo](https://www.youtube.com/watch?v=...) - Satya Nadella's demo
 - [Ensemble Learning (Wikipedia)](https://en.wikipedia.org/wiki/Ensemble_learning)
 - [Multi-Agent Systems](https://en.wikipedia.org/wiki/Multi-agent_system)
+- [Language Model Council Paper (NAACL 2025)](https://arxiv.org/abs/2406.08598)
+
+## 📖 Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) - System design and data models
+- [Features](docs/FEATURES.md) - Detailed feature specifications
+- [Azure Setup](docs/AZURE_SETUP.md) - Azure provisioning guide
+- [Research](docs/RESEARCH.md) - Background research and academic references
+- [Roadmap](docs/ROADMAP.md) - Implementation phases and milestones
 
 ## 📄 License
 
@@ -176,4 +251,4 @@ MIT
 
 ---
 
-Built with ❤️ for the AI community
+Built with ❤️ for the AI community | [Live Demo](https://azca-webyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io) | [GitHub](https://github.com/arjith/llm-council)

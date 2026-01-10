@@ -5,6 +5,31 @@
 
 ---
 
+## Current Deployment
+
+### Live Environment
+
+| Resource | Type | URL/Details |
+|----------|------|-------------|
+| **Web App** | Container App | https://azca-webyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io |
+| **API** | Container App | https://azca-apiyslfuxsmb344w.victoriousstone-7174d72d.eastus.azurecontainerapps.io |
+| **Container Registry** | ACR | azacryslfuxsmb344w.azurecr.io |
+| **Resource Group** | RG | rg-llm-council (East US) |
+| **Azure OpenAI** | Cognitive Services | agpt11 (in agpt1 RG) |
+
+### Deployed Models
+
+| Model | Deployment Name | Status |
+|-------|-----------------|--------|
+| GPT-5 | gpt-5 | ✅ Active |
+| GPT-5 Mini | gpt-5-mini | ✅ Active |
+| GPT-4.1 | gpt-4.1 | ✅ Active |
+| o3 | o3 | ✅ Active |
+| o3-mini | o3-mini | ✅ Active |
+| o4-mini | o4-mini | ✅ Active |
+
+---
+
 ## Table of Contents
 - [1. Overview](#1-overview)
 - [2. Prerequisites](#2-prerequisites)

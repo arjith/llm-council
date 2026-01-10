@@ -1,7 +1,37 @@
 # LLM Council Implementation Roadmap
 
 > **Purpose:** Phased implementation plan with milestones  
-> **Last Updated:** January 10, 2026
+> **Last Updated:** January 10, 2026  
+> **Status:** ✅ MVP Complete - Deployed to Azure Container Apps
+
+---
+
+## Current Status
+
+### ✅ Completed Features
+- Core council pipeline with opinions → review → voting → synthesis
+- REST API with Fastify
+- WebSocket for real-time streaming
+- React + Vite web dashboard
+- Debug view with timeline and agent responses
+- Session persistence (in-memory, with export support)
+- Multiple voting methods (majority, confidence, ranked-choice, etc.)
+- Council presets (small, standard, reasoning, diverse)
+- Azure Container Apps deployment
+- Docker containerization
+
+### 🔄 In Progress
+- Additional council role types
+- Alternative iteration patterns (Delphi, Oxford debate)
+- Enhanced visual output (Mermaid diagrams)
+- Cosmos DB persistence (currently in-memory)
+
+### ⏳ Planned
+- Self-correction pipeline with verification
+- A/B testing framework
+- Human-in-the-loop breakpoints
+- MCP tool integration
+- Multi-provider support (Anthropic, Ollama)
 
 ---
 
@@ -75,7 +105,7 @@ CouncilOrchestrator
 └── handleError()        # Retry/fallback
 ```
 
-**Milestone 1:** ✅ Basic council responds to queries via CLI
+**Milestone 1:** ✅ Basic council responds to queries via CLI — **COMPLETE**
 
 ---
 
@@ -89,12 +119,12 @@ CouncilOrchestrator
 ### Week 4: Backend API
 
 **Tasks:**
-- [ ] Set up Fastify server
-- [ ] Create session management routes
-- [ ] Implement message handling
-- [ ] Add WebSocket for streaming
-- [ ] Create authentication middleware (JWT)
-- [ ] Set up rate limiting
+- [x] Set up Fastify server
+- [x] Create session management routes
+- [x] Implement message handling
+- [x] Add WebSocket for streaming
+- [ ] Create authentication middleware (JWT) — *deferred*
+- [x] Set up rate limiting
 
 **API Endpoints:**
 ```
@@ -107,12 +137,12 @@ WS     /api/sessions/:id/stream   # Real-time updates
 ### Week 5: Data Persistence
 
 **Tasks:**
-- [ ] Design Cosmos DB schema
-- [ ] Implement session repository
-- [ ] Add message persistence
-- [ ] Create trace collector
-- [ ] Implement checkpoint system
-- [ ] Add voting record storage
+- [x] Design Cosmos DB schema
+- [x] Implement session repository (in-memory MVP)
+- [x] Add message persistence
+- [x] Create trace collector
+- [ ] Implement checkpoint system — *planned*
+- [x] Add voting record storage
 
 **Cosmos DB Containers:**
 ```
@@ -124,7 +154,7 @@ CouncilDB
 └── votes        (partitionKey: /sessionId)
 ```
 
-**Milestone 2:** ✅ API stores and retrieves council sessions
+**Milestone 2:** ✅ API stores and retrieves council sessions — **COMPLETE (in-memory)**
 
 ---
 
@@ -177,7 +207,7 @@ src/components/debug/
 └── TraceExplorer.tsx
 ```
 
-**Milestone 3:** ✅ Web UI with chat and debug views working
+**Milestone 3:** ✅ Web UI with chat and debug views working — **COMPLETE**
 
 ---
 
@@ -191,13 +221,13 @@ src/components/debug/
 ### Week 8: Voting & Roles
 
 **Tasks:**
-- [ ] Implement ranked-choice voting
-- [ ] Add consensus voting
-- [ ] Create weighted voting
-- [ ] Build veto mechanism
-- [ ] Create role configuration UI
-- [ ] Implement system prompt templates
-- [ ] Add council presets (research, coding, debate)
+- [x] Implement ranked-choice voting
+- [x] Add consensus voting
+- [x] Create weighted voting
+- [x] Build veto mechanism
+- [ ] Create role configuration UI — *planned*
+- [x] Implement system prompt templates
+- [x] Add council presets (research, coding, debate)
 
 **Voting Methods:**
 ```typescript
@@ -214,12 +244,12 @@ enum VotingMethod {
 ### Week 9: Export/Import
 
 **Tasks:**
-- [ ] Define export schema (JSON)
-- [ ] Create session exporter
-- [ ] Build import validator
-- [ ] Add model mapping for import
-- [ ] Create markdown export
-- [ ] Implement session replay
+- [x] Define export schema (JSON)
+- [x] Create session exporter
+- [ ] Build import validator — *planned*
+- [ ] Add model mapping for import — *planned*
+- [ ] Create markdown export — *planned*
+- [ ] Implement session replay — *planned*
 
 **Export Format:**
 ```
@@ -232,7 +262,7 @@ export/
 └── schemas/v1/
 ```
 
-**Milestone 4:** ✅ Full export/import working with replay
+**Milestone 4:** 🔄 Export working, import in progress
 
 ---
 

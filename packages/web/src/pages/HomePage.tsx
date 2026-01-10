@@ -11,8 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  ChevronRight,
-  XCircle
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

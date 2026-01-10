@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/refs/heads/main/schemas/v1.0/azure.yaml.json
+name: llm-council
+metadata:
+  template: llm-council@0.1.0
+services:
+  api:
+    project: ./packages/api
+    language: ts
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: ../../
+  web:
+    project: ./packages/web
+    language: ts
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: ../../

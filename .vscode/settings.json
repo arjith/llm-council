@@ -1,0 +1,12 @@
+{
+    "chat.mcp.discovery.enabled": {
+        "claude-desktop": true
+    },
+    "chat.mcp.assisted.nuget.enabled": true,
+    "chat.mcp.apps.enabled": true,
+    "chat.mcp.serverSampling": {},
+    "azureMcp.serverMode": "all",
+    "github.copilot.chat.cli.mcp.enabled": true,
+    "github.copilot.chat.githubMcpServer.enabled": true,
+    "github.copilot.chat.newWorkspace.useContext7": true
+}

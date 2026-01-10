@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LLM Council API Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+    pre { background: #16213e; padding: 15px; border-radius: 8px; overflow: auto; }
+    .loading { color: #f0ad4e; }
+    .success { color: #5cb85c; }
+    .error { color: #d9534f; }
+    button { padding: 10px 20px; margin: 10px 0; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>LLM Council API Test</h1>
+  <p>Testing POST /api/council/run</p>
+  <button onclick="runTest()">Run Test</button>
+  <div id="status" class="loading">Click button to start test...</div>
+  <h3>Response:</h3>
+  <pre id="result">Waiting for response...</pre>
+
+  <script>
+    async function runTest() {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      
+      status.className = 'loading';
+      status.textContent = 'Making request... (this may take 30-60 seconds)';
+      result.textContent = 'Loading...';
+      
+      const startTime = Date.now();
+      
+      try {
+        const response = await fetch('/api/council/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: 'What is 2+2?',
+            preset: 'small'
+          })
+        });
+        
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        const data = await response.json();
+        
+        status.className = response.ok ? 'success' : 'error';
+        status.textContent = `Response received in ${elapsed}s - Status: ${response.status}`;
+        result.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        status.className = 'error';
+        status.textContent = `Error after ${elapsed}s`;
+        result.textContent = 'Error: ' + error.message;
+      }
+    }
+    
+    // Auto-run test on page load
+    runTest();
+  </script>
+</body>
+</html>

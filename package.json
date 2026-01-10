@@ -1,0 +1,44 @@
+{
+  "name": "llm-council",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM Council - Multi-model consensus framework with debate, voting, and self-correction",
+  "keywords": [
+    "llm",
+    "council",
+    "multi-agent",
+    "consensus",
+    "ai",
+    "openai",
+    "azure"
+  ],
+  "license": "MIT",
+  "author": "Your Name",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @llm-council/api dev",
+    "dev:web": "pnpm --filter @llm-council/web dev",
+    "start": "concurrently -n api,web -c blue,green \"pnpm dev:api\" \"pnpm dev:web\"",
+    "stop": "npx kill-port 3000 3001",
+    "build": "pnpm -r run build",
+    "build:core": "pnpm --filter @llm-council/core build",
+    "test": "pnpm -r run test",
+    "lint": "pnpm -r run lint",
+    "clean": "pnpm -r run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.2.1",
+    "kill-port": "^2.0.1",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@8.15.9",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

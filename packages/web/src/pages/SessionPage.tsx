@@ -16,6 +16,7 @@ import { DebateCard } from '@/components/DebateCard';
 import { RoundHeader } from '@/components/RoundHeader';
 import { ConfidenceBadge } from '@/components/ConfidenceBadge';
 import { TimelineEvent } from '@/components/TimelineEvent';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
 interface Session {
   id: string;
@@ -318,9 +319,7 @@ export function SessionPage() {
                   <ConfidenceBadge value={session.finalConfidence} size="sm" />
                 )}
               </div>
-              <div className="text-gray-200 whitespace-pre-wrap">
-                {session.finalAnswer}
-              </div>
+              <MarkdownRenderer content={session.finalAnswer} />
             </div>
           )}
 

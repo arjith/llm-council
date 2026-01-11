@@ -1,7 +1,7 @@
 # LLM Council - Next Steps Research & Architecture Improvements
 
-> **Document Version**: 1.2  
-> **Last Updated**: January 11, 2026  
+> **Document Version**: 1.3  
+> **Last Updated**: June 2025  
 > **Purpose**: Comprehensive research for future enhancements to the LLM Council framework  
 > **Test Status**: ✅ 109/109 tests passing (including E2E council flow)
 
@@ -10,12 +10,12 @@
 ## Table of Contents
 
 1. [Current Architecture Overview](#current-architecture-overview)
-2. [Smart Progress Indicators](#smart-progress-indicators) ⭐ **NEW**
-3. [Azure Queue Storage for Async Processing](#azure-queue-storage-for-async-processing)
+2. [LLM Narrator Progress System](#llm-narrator-progress-system) ⭐ **PRIORITY**
+3. [Markdown Response Rendering](#markdown-response-rendering) ✅ **IMPLEMENTED**
 4. [Persistent Storage with Cosmos DB](#persistent-storage-with-cosmos-db)
-5. [RAG Integration with Azure AI Search](#rag-integration-with-azure-ai-search)
-6. [Tool/Function Calling for Council Members](#toolfunction-calling-for-council-members)
-7. [Web Search with Bing Grounding](#web-search-with-bing-grounding)
+5. [Azure Queue Storage for Async Processing](#azure-queue-storage-for-async-processing)
+6. [RAG Integration with Azure AI Search](#rag-integration-with-azure-ai-search)
+7. [Tool/Function Calling for Council Members](#toolfunction-calling-for-council-members)
 8. [Implementation Roadmap](#implementation-roadmap)
 9. [Reference Links](#reference-links)
 
@@ -59,7 +59,7 @@ Frontend (React) → POST /api/council/run → Fastify API → CouncilPipeline
 
 ---
 
-## Smart Progress Indicators
+## LLM Narrator Progress System
 
 ### The Problem
 
@@ -78,248 +78,333 @@ This creates anxiety and uncertainty. Users don't know:
 - Which model is responding?
 - How much longer will it take?
 
-### Inspiration: Claude Code's Progress Updates
+### Solution: LLM-Powered Progress Narrator
 
-Claude Code uses **real-time progress indicators** that show:
-- Current operation being performed
-- File/resource being processed
-- Estimated progress through the task
+Inspired by **Claude Code's** agentic progress updates, we use a lightweight LLM (gpt-4o-mini) to generate human-friendly progress summaries in real-time.
 
-### Proposed UX
+### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  🔄 Convening Council...                                │
-│  ━━━━━━━━━━━━━━━━━━━━━━━░░░░░░░░░░░░  60%               │
-│                                                         │
-│  📋 Stage 1: Opinions (3/5 complete)                    │
-│                                                         │
-│  ✅ GPT-5 Primary responded (2.8s)                      │
-│  ✅ o4-mini Reasoner responded (1.2s)                   │
-│  ✅ GPT-4o Analyst responded (3.1s)                     │
-│  🔵 Claude Sonnet querying...                           │
-│  ⏳ Gemini Pro waiting...                               │
-│                                                         │
-│  💬 Latest: "Analyzing the ethical implications..."     │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        CouncilPipeline                              │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐         │
+│  │ Stage 1  │──▶│ Stage 2  │──▶│ Stage 3  │──▶│ Stage 4  │         │
+│  │ Opinions │   │ Review   │   │ Voting   │   │ Synthesis│         │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘         │
+│       │              │              │              │                │
+│       ▼              ▼              ▼              ▼                │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                    Event Aggregator                          │   │
+│  │   member:start | member:complete | stage:complete | vote     │   │
+│  └────────────────────────────┬────────────────────────────────┘   │
+└───────────────────────────────┼─────────────────────────────────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │    LLM Narrator       │
+                    │    (gpt-4o-mini)      │
+                    │  - Debounces events   │
+                    │  - Batches updates    │
+                    │  - Generates text     │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │     WebSocket /       │
+                    │     SSE Stream        │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │   React Frontend      │
+                    │  useCouncilProgress   │
+                    │  <CouncilProgress />  │
+                    └───────────────────────┘
 ```
 
-### Implementation Options
+### Recommended Model: gpt-4o-mini
 
-#### Option 1: Server-Sent Events (SSE) Streaming
+| Model | Latency | Cost/1K tokens | Use Case |
+|-------|---------|----------------|----------|
+| **gpt-4o-mini** | ~200ms | $0.00015 | ✅ Best for narration |
+| gpt-4o | ~500ms | $0.0025 | Too slow/expensive |
+| o4-mini | ~1s | $0.001 | Overkill for simple text |
 
-Azure OpenAI supports streaming via `stream: true`:
+**Cost estimate**: ~$0.0016 per council session (10-15 narration calls)
+
+### LLM Narrator Implementation
 
 ```typescript
-// API endpoint with SSE
-app.post('/api/council/run-stream', async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  
-  const pipeline = new CouncilPipeline(adapter);
-  
-  // Subscribe to pipeline events
-  pipeline.on('member:start', (data) => {
-    res.write(`event: progress\ndata: ${JSON.stringify({
-      type: 'member_start',
-      member: data.member.name,
-      stage: data.stage
-    })}\n\n`);
-  });
-  
-  pipeline.on('member:complete', (data) => {
-    res.write(`event: progress\ndata: ${JSON.stringify({
-      type: 'member_complete',
-      member: data.member.name,
-      duration: data.durationMs,
-      preview: data.response.content.slice(0, 100)
-    })}\n\n`);
-  });
-  
-  pipeline.on('stage:complete', (data) => {
-    res.write(`event: progress\ndata: ${JSON.stringify({
-      type: 'stage_complete',
-      stage: data.stage,
-      progress: calculateProgress(data)
-    })}\n\n`);
-  });
-  
-  const session = await pipeline.run(req.body.question, members, config);
-  
-  res.write(`event: complete\ndata: ${JSON.stringify(session)}\n\n`);
-  res.end();
-});
-```
+import { AzureOpenAI } from 'openai';
+import { debounce } from 'lodash';
 
-Frontend consumption:
-
-```typescript
-const eventSource = new EventSource('/api/council/run-stream');
-
-eventSource.addEventListener('progress', (event) => {
-  const data = JSON.parse(event.data);
-  updateProgressUI(data);
-});
-
-eventSource.addEventListener('complete', (event) => {
-  const session = JSON.parse(event.data);
-  setSession(session);
-  eventSource.close();
-});
-```
-
-**Pros**: Simple, browser-native, no additional infrastructure  
-**Cons**: Unidirectional, connection can timeout on long operations
-
-#### Option 2: WebSocket with Azure SignalR Service
-
-Azure SignalR Service provides managed WebSocket connections:
-
-```typescript
-// Server-side with SignalR
-import { SignalR } from '@azure/functions';
-
-const signalR = output.signalR({
-  hubName: 'councilHub',
-  connectionInfo: { connectionStringSetting: 'AzureSignalRConnectionString' }
-});
-
-// Send progress updates
-await context.sendSignalR({
-  target: 'progressUpdate',
-  arguments: [{
-    sessionId: job.id,
-    stage: 'opinions',
-    member: 'GPT-5',
-    status: 'complete',
-    progress: 60
-  }]
-});
-```
-
-Frontend with SignalR client:
-
-```typescript
-import * as signalR from '@microsoft/signalr';
-
-const connection = new signalR.HubConnectionBuilder()
-  .withUrl('/api/negotiate')
-  .withAutomaticReconnect()
-  .build();
-
-connection.on('progressUpdate', (data) => {
-  updateProgressUI(data);
-});
-
-await connection.start();
-```
-
-**Pros**: Bidirectional, highly scalable, auto-reconnect, works with Azure Functions  
-**Cons**: Additional Azure resource, more complex setup
-
-#### Option 3: LLM-Powered "Update Narrator" (Claude Code Style)
-
-Use a lightweight LLM to generate human-friendly progress summaries:
-
-```typescript
-// After each significant event, summarize for user
-async function narrateProgress(events: ProgressEvent[]): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini', // Fast, cheap model
-    messages: [{
-      role: 'system',
-      content: `You are a progress narrator. Generate a brief, friendly 1-sentence update 
-                about what the AI council is currently doing. Be specific but concise.`
-    }, {
-      role: 'user',
-      content: `Events: ${JSON.stringify(events)}`
-    }],
-    max_tokens: 50
-  });
-  
-  return response.choices[0].message.content;
+interface ProgressEvent {
+  type: 'member_start' | 'member_complete' | 'stage_complete' | 'voting' | 'synthesis';
+  member?: string;
+  model?: string;
+  stage?: string;
+  duration?: number;
+  confidence?: number;
+  preview?: string;
+  timestamp: number;
 }
 
-// Example outputs:
-// "GPT-5 is analyzing the ethical dimensions while o4-mini reasons through the technical constraints..."
-// "The council has gathered 4 opinions and is now entering the review phase..."
-// "Final voting is underway - 3 members have cast their votes so far..."
-```
-
-**Pros**: Human-friendly, engaging, contextual  
-**Cons**: Additional API calls, slight latency, cost
-
-### Recommended Approach
-
-Combine **SSE streaming** with **staged progress calculation**:
-
-1. **Phase 1**: Add SSE endpoint with real-time events
-2. **Phase 2**: Add progress percentage calculation
-3. **Phase 3**: (Optional) Add LLM narrator for premium UX
-
-### Progress Calculation
-
-```typescript
-function calculateProgress(state: PipelineState): number {
-  const weights = {
-    opinions: 40,   // 5 members × 8% each
-    review: 20,     // 5 members × 4% each
-    voting: 20,     // 5 members × 4% each
-    synthesis: 20   // Final step
-  };
+export class LLMNarrator {
+  private client: AzureOpenAI;
+  private eventBuffer: ProgressEvent[] = [];
+  private lastNarration: string = '';
   
-  let progress = 0;
-  
-  // Completed stages
-  for (const stage of state.completedStages) {
-    progress += weights[stage];
+  constructor(client: AzureOpenAI) {
+    this.client = client;
+    this.generateNarration = debounce(this.generateNarration.bind(this), 500);
   }
-  
-  // Current stage partial progress
-  if (state.currentStage) {
-    const stageWeight = weights[state.currentStage];
-    const memberProgress = state.completedMembers / state.totalMembers;
-    progress += stageWeight * memberProgress;
+
+  addEvent(event: ProgressEvent): void {
+    this.eventBuffer.push(event);
+    this.generateNarration();
   }
-  
-  return Math.round(progress);
+
+  private async generateNarration(): Promise<string> {
+    if (this.eventBuffer.length === 0) return this.lastNarration;
+
+    const events = [...this.eventBuffer];
+    this.eventBuffer = [];
+
+    const response = await this.client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a friendly progress narrator for an AI council deliberation.
+Generate a brief, engaging 1-2 sentence update about what's happening.
+Be specific about member names and actions. Use present tense.
+Add personality - be slightly witty but professional.
+Never use technical jargon like "tokens" or "latency".`
+        },
+        {
+          role: 'user',
+          content: `Recent events:\n${JSON.stringify(events, null, 2)}\n\nGenerate a progress update:`
+        }
+      ],
+      max_tokens: 60,
+      temperature: 0.7
+    });
+
+    this.lastNarration = response.choices[0].message.content || '';
+    return this.lastNarration;
+  }
 }
 ```
 
-### UI Components
+### Example Narrations
+
+| Event | Generated Narration |
+|-------|---------------------|
+| `member_start: GPT-5` | *"GPT-5 is diving into the question, examining all angles..."* |
+| `member_complete: o4-mini (1.2s)` | *"o4-mini weighs in with lightning speed! Now waiting on the others..."* |
+| `stage_complete: opinions (5/5)` | *"All five council members have shared their perspectives. Let the debate begin!"* |
+| `voting: 3 for A, 2 for B` | *"The vote is heating up - slight edge for Option A, but it's close..."* |
+| `synthesis: starting` | *"Time to weave the threads together. The synthesizer is crafting the final answer..."* |
+
+### React Hook: useCouncilProgress
 
 ```typescript
+import { useState, useEffect, useCallback } from 'react';
+
 interface ProgressState {
-  stage: 'opinions' | 'review' | 'voting' | 'synthesis';
-  stageProgress: number;
+  stage: 'opinions' | 'review' | 'voting' | 'synthesis' | 'complete';
   overallProgress: number;
-  members: {
-    name: string;
-    model: string;
-    status: 'waiting' | 'querying' | 'complete' | 'error';
-    duration?: number;
-    preview?: string;
-  }[];
-  narrative?: string;
+  members: MemberStatus[];
+  narrative: string;
+  isComplete: boolean;
 }
 
-const CouncilProgress: React.FC<{ state: ProgressState }> = ({ state }) => (
-  <div className="space-y-4">
-    <ProgressBar value={state.overallProgress} />
-    <StageIndicator stage={state.stage} progress={state.stageProgress} />
-    <MemberStatusList members={state.members} />
-    {state.narrative && <NarrativeText text={state.narrative} />}
-  </div>
-);
+interface MemberStatus {
+  name: string;
+  model: string;
+  status: 'waiting' | 'querying' | 'complete' | 'error';
+  duration?: number;
+}
+
+export function useCouncilProgress(sessionId: string | null) {
+  const [progress, setProgress] = useState<ProgressState>({
+    stage: 'opinions',
+    overallProgress: 0,
+    members: [],
+    narrative: 'Preparing the council...',
+    isComplete: false
+  });
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    // Option 1: WebSocket (bidirectional, already in codebase)
+    const ws = new WebSocket(`ws://localhost:3001/api/council/progress/${sessionId}`);
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setProgress(prev => ({
+        ...prev,
+        ...data,
+        overallProgress: calculateProgress(data)
+      }));
+    };
+
+    // Option 2: SSE (simpler, unidirectional)
+    // const eventSource = new EventSource(`/api/council/progress/${sessionId}`);
+    // eventSource.onmessage = (event) => { ... };
+
+    return () => ws.close();
+  }, [sessionId]);
+
+  return progress;
+}
+
+function calculateProgress(state: Partial<ProgressState>): number {
+  const weights = { opinions: 40, review: 20, voting: 20, synthesis: 20 };
+  // ... calculation logic
+}
 ```
 
-### Documentation Links
+### React Component: CouncilProgress
 
-- [Azure OpenAI Streaming](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/streaming)
-- [Server-Sent Events MDN](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
-- [Azure SignalR Service Overview](https://learn.microsoft.com/en-us/azure/azure-signalr/signalr-overview)
-- [SignalR with Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-signalr-service)
+```tsx
+interface CouncilProgressProps {
+  sessionId: string;
+  onComplete: (session: Session) => void;
+}
+
+export function CouncilProgress({ sessionId, onComplete }: CouncilProgressProps) {
+  const progress = useCouncilProgress(sessionId);
+
+  useEffect(() => {
+    if (progress.isComplete) {
+      // Fetch final session and trigger callback
+      fetch(`/api/sessions/${sessionId}`).then(r => r.json()).then(onComplete);
+    }
+  }, [progress.isComplete]);
+
+  return (
+    <div className="glass rounded-xl p-6 space-y-4">
+      {/* Progress Bar */}
+      <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className="absolute h-full bg-gradient-to-r from-council-primary to-council-secondary transition-all duration-500"
+          style={{ width: `${progress.overallProgress}%` }}
+        />
+      </div>
+
+      {/* Stage Indicator */}
+      <div className="flex items-center gap-2">
+        <span className="text-lg">
+          {progress.stage === 'opinions' && '🔵'}
+          {progress.stage === 'review' && '🟣'}
+          {progress.stage === 'voting' && '🗳️'}
+          {progress.stage === 'synthesis' && '✨'}
+        </span>
+        <span className="text-white font-medium capitalize">
+          Stage: {progress.stage}
+        </span>
+        <span className="text-gray-400 text-sm">
+          ({progress.overallProgress}%)
+        </span>
+      </div>
+
+      {/* Member Status Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {progress.members.map(member => (
+          <div 
+            key={member.name}
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
+              member.status === 'complete' && 'bg-green-500/10 text-green-400',
+              member.status === 'querying' && 'bg-blue-500/10 text-blue-400 animate-pulse',
+              member.status === 'waiting' && 'bg-gray-700/50 text-gray-500',
+              member.status === 'error' && 'bg-red-500/10 text-red-400'
+            )}
+          >
+            <span>
+              {member.status === 'complete' && '✅'}
+              {member.status === 'querying' && '🔄'}
+              {member.status === 'waiting' && '⏳'}
+              {member.status === 'error' && '❌'}
+            </span>
+            <span className="truncate">{member.name}</span>
+            {member.duration && (
+              <span className="text-xs opacity-70">
+                {(member.duration / 1000).toFixed(1)}s
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* LLM-Generated Narrative */}
+      <div className="flex items-start gap-3 p-4 bg-gray-800/50 rounded-lg">
+        <span className="text-2xl">💬</span>
+        <p className="text-gray-300 italic animate-in fade-in duration-300">
+          "{progress.narrative}"
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### Implementation Phases
+
+| Phase | Duration | Tasks |
+|-------|----------|-------|
+| **Phase 1** | 1-2 days | Progress calculation + UI components (leverage existing WebSocket) |
+| **Phase 2** | 2-3 days | LLM Narrator service with debouncing + API integration |
+| **Phase 3** | 1-2 days | UI polish: animations, transitions, error states |
+| **Phase 4** | 1 day | Testing, optimization, edge cases |
+
+### npm Packages
+
+```bash
+# Already using
+pnpm add openai
+
+# Optional helpers
+pnpm add lodash.debounce    # Event batching
+pnpm add eventsource-parser # SSE parsing (if using SSE)
+```
+
+---
+
+## Markdown Response Rendering
+
+### Status: ✅ IMPLEMENTED
+
+We've added rich markdown rendering for LLM responses with syntax highlighting.
+
+### Packages Added
+
+```bash
+pnpm add react-markdown react-syntax-highlighter remark-gfm
+pnpm add -D @types/react-syntax-highlighter
+```
+
+### Component: MarkdownRenderer
+
+Located at `packages/web/src/components/MarkdownRenderer.tsx`
+
+**Features:**
+- GitHub Flavored Markdown (tables, strikethrough, task lists)
+- Syntax highlighting for 30+ languages (using Prism)
+- Copy button for code blocks
+- Responsive styling matching app theme
+- Safe rendering (no dangerouslySetInnerHTML)
+
+### Usage
+
+```tsx
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+
+// In SessionPage - Final Answer
+<MarkdownRenderer content={session.finalAnswer} />
+
+// In DebateCard - Member Responses
+<MarkdownRenderer content={response.content} />
+```
 
 ---
 
@@ -760,91 +845,29 @@ private async queryMember(
 
 ---
 
-## Web Search with Bing Grounding
-
-### What is Bing Grounding?
-
-**Grounding with Bing Search** allows council members to:
-- Access **real-time public web data**
-- Answer questions about **current events**
-- Provide **citations** to sources
-- Stay up-to-date beyond training cutoff
-
-### Integration Options
-
-#### Option 1: Azure AI Agents with Bing Tool
-
-```typescript
-import { AgentsClient, ToolUtility } from "@azure/ai-agents";
-import { DefaultAzureCredential } from "@azure/identity";
-
-const client = new AgentsClient(
-  process.env.PROJECT_ENDPOINT,
-  new DefaultAzureCredential()
-);
-
-// Create agent with Bing tool
-const bingTool = ToolUtility.createBingGroundingTool(
-  process.env.BING_CONNECTION_ID
-);
-
-const agent = await client.createAgent(
-  process.env.MODEL_DEPLOYMENT_NAME,
-  {
-    name: "council-member-with-search",
-    instructions: "You are a council member that can search the web.",
-    tools: [bingTool]
-  }
-);
-```
-
-#### Option 2: Direct Bing Search API
-
-```typescript
-import { WebSearchClient } from "@azure/cognitiveservices-websearch";
-import { CognitiveServicesCredentials } from "@azure/ms-rest-azure-js";
-
-const credentials = new CognitiveServicesCredentials(BING_SEARCH_KEY);
-const webSearch = new WebSearchClient(credentials);
-
-const results = await webSearch.web.search("latest AI news", {
-  count: 5,
-  freshness: "Day"
-});
-
-// Inject search results into council prompt
-const searchContext = results.webPages.value
-  .map(p => `${p.name}: ${p.snippet}`)
-  .join('\n');
-```
-
-### Cost Considerations
-
-- Bing Grounding has **per-query pricing**
-- Consider caching frequent queries
-- Use sparingly for high-volume scenarios
-
-### Documentation Links
-
-- [Grounding with Bing Search Overview](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools-classic/bing-grounding)
-- [Bing Search JavaScript Code Samples](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools-classic/bing-code-samples)
-- [Bing Grounding Pricing](https://www.microsoft.com/en-us/bing/apis/grounding-pricing)
-
----
-
 ## Implementation Roadmap
 
-### Phase 0: Smart Progress Indicators (Week 1) ⭐ **PRIORITY**
+### Phase 0: LLM Narrator Progress System (Week 1) ⭐ **PRIORITY**
 
-| Task | Priority | Complexity |
-|------|----------|------------|
-| Add SSE streaming endpoint | High | Medium |
-| Emit pipeline events from CouncilPipeline | High | Low |
-| Create `CouncilProgress` React component | High | Medium |
-| Add progress calculation logic | Medium | Low |
-| (Optional) Add LLM narrator | Low | Medium |
+| Task | Priority | Complexity | Status |
+|------|----------|------------|--------|
+| Create `LLMNarrator` service class | High | Medium | 🔲 |
+| Add WebSocket progress endpoint | High | Medium | 🔲 |
+| Create `useCouncilProgress` hook | High | Low | 🔲 |
+| Create `CouncilProgress` component | High | Medium | 🔲 |
+| Add progress calculation logic | Medium | Low | 🔲 |
+| Test and polish UI animations | Low | Low | 🔲 |
 
-### Phase 1: Persistent Storage (Week 2-3)
+### Phase 1: Markdown Rendering ✅ **COMPLETE**
+
+| Task | Priority | Complexity | Status |
+|------|----------|------------|--------|
+| Install react-markdown + syntax highlighter | High | Low | ✅ |
+| Create `MarkdownRenderer` component | High | Medium | ✅ |
+| Integrate in SessionPage (Final Answer) | High | Low | ✅ |
+| Integrate in DebateCard (Member Responses) | High | Low | ✅ |
+
+### Phase 2: Persistent Storage (Week 2-3)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -853,7 +876,7 @@ const searchContext = results.webPages.value
 | Add migration from in-memory | Medium | Low |
 | Update env vars and configuration | High | Low |
 
-### Phase 2: Async Queue Processing (Week 4-5)
+### Phase 3: Async Queue Processing (Week 4-5)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -863,25 +886,14 @@ const searchContext = results.webPages.value
 | Add status polling endpoint | High | Medium |
 | Update frontend for async flow | Medium | Medium |
 
-### Phase 3: Tool Calling (Week 6-7)
+### Phase 4: Tool Calling & RAG (Week 6+)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
 | Define tool schemas | High | Medium |
 | Implement tool executor | High | High |
-| Integrate with pipeline | Medium | Medium |
-| Add calculator tool | Low | Low |
-| Add code execution tool | Low | High |
-
-### Phase 4: RAG & Web Search (Week 8+)
-
-| Task | Priority | Complexity |
-|------|----------|------------|
-| Set up Azure AI Search | High | Medium |
-| Create document index | High | High |
-| Implement retrieval in pipeline | High | High |
-| Add Bing grounding (optional) | Low | Medium |
-| Add citations to UI | Medium | Medium |
+| Set up Azure AI Search | Medium | Medium |
+| Implement RAG retrieval | Medium | High |
 
 ---
 
@@ -920,15 +932,15 @@ const searchContext = results.webPages.value
 
 ## Quick Decision Matrix
 
-| Feature | Effort | Impact | Priority | Recommendation |
-|---------|--------|--------|----------|----------------|
-| **Smart Progress** | Low | High | 🔴 Critical | **Start here - improves UX immediately** |
+| Feature | Effort | Impact | Priority | Status |
+|---------|--------|--------|----------|--------|
+| **Markdown Rendering** | Low | Medium | ✅ Done | **IMPLEMENTED** - react-markdown + syntax highlighting |
+| **LLM Narrator Progress** | Medium | High | 🔴 Critical | **Next up - vastly improves UX** |
 | Cosmos DB Storage | Low | High | 🔴 Critical | Prevents data loss |
 | Queue Processing | Medium | High | 🟡 High | Enables scaling and better UX |
 | Tool Calling | High | Medium | 🟢 Medium | Adds powerful capabilities |
 | RAG with AI Search | High | High | 🟡 High | Domain-specific accuracy |
-| Bing Grounding | Medium | Low | 🔵 Low | Nice-to-have for news queries |
 
 ---
 
-*This document should be updated as new research is conducted or implementation decisions are made.*
+*Last updated: June 2025. Document evolves as features are implemented.*

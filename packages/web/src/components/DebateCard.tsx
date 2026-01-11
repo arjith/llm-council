@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConfidenceBadge } from './ConfidenceBadge';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface DebateCardProps {
   memberId: string;
@@ -87,10 +88,16 @@ export function DebateCard({
         </div>
       )}
 
-      {/* Content */}
-      <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
-        {displayContent}
-        {isLong && !isExpanded && '...'}
+      {/* Content - Now with Markdown rendering */}
+      <div className="text-sm leading-relaxed">
+        {isExpanded ? (
+          <MarkdownRenderer content={content} />
+        ) : (
+          <div className="text-gray-300 whitespace-pre-wrap">
+            {displayContent}
+            {isLong && !isExpanded && '...'}
+          </div>
+        )}
       </div>
 
       {/* Key Points */}

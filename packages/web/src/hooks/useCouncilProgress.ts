@@ -168,7 +168,9 @@ export function useCouncilProgress(question: string, options?: {
 
   // Start WebSocket connection and run council
   const start = useCallback(() => {
-    if (!enabled || !question.trim() || wsRef.current) return;
+    // Don't check 'enabled' here - it may be stale due to closure.
+    // The caller (handleSubmit) is responsible for ensuring we should start.
+    if (!question.trim() || wsRef.current) return;
 
     const params = new URLSearchParams();
     params.set('question', question);
@@ -346,7 +348,7 @@ export function useCouncilProgress(question: string, options?: {
       }));
       wsRef.current = null;
     };
-  }, [enabled, question, useDynamic, narrate, preset, calculateProgress]);
+  }, [question, useDynamic, narrate, preset, calculateProgress]);
 
   // Stop and cleanup WebSocket
   const stop = useCallback(() => {

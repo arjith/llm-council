@@ -64,7 +64,7 @@ export function HomePage() {
 
   const councilProgress = useCouncilProgress(question, {
     enabled: isRunning,
-    useDynamic: true,
+    useDynamic: false, // Use standard pipeline for proper member progress events
     narrate: true,
     preset: selectedPreset,
     onComplete: handleSessionComplete,

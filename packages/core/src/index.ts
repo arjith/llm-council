@@ -19,3 +19,6 @@ export * from './prompts.js';
 export * from './meta-council.js';
 export * from './iteration-controller.js';
 export * from './memory-manager.js';
+
+// LLM Narrator
+export * from './narrator.js';

@@ -25,6 +25,10 @@ const dynamicPipeline = createDynamicCouncilPipeline();
 const RunCouncilSchema = z.object({
   question: z.string().min(1).max(10000),
   preset: z.enum(['small', 'standard', 'reasoning', 'diverse']).optional(),
+  /** Enable dynamic role assignment via meta-council (default: true) */
+  useDynamic: z.boolean().optional().default(true),
+  /** Planning mode when using dynamic (default: hybrid) */
+  planningMode: z.enum(['static', 'llm', 'hybrid']).optional(),
   members: z.array(z.object({
     modelKey: z.enum(['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4.1', 'o3', 'o3-mini', 'o4-mini']),
     role: z.enum(['opinion-giver', 'reviewer', 'synthesizer', 'backup', 'arbiter']).optional(),
@@ -171,10 +175,47 @@ export const councilRoutes: FastifyPluginAsync = async (fastify) => {
 
   /**
    * Run a council session (standard mode)
+   * Now uses dynamic role assignment by default (can be disabled with useDynamic: false)
    */
   fastify.post<{ Body: z.infer<typeof RunCouncilSchema> }>('/run', async (request, _reply) => {
     const body = RunCouncilSchema.parse(request.body);
     
+    // Check if dynamic planning should be used (default: true unless preset/members provided)
+    const useDynamic = body.useDynamic ?? (!body.preset && !body.members);
+    
+    if (useDynamic && !body.preset && !body.members) {
+      // Use dynamic council with meta-council planning
+      const options = {
+        metaConfig: {
+          planningMode: body.planningMode ?? 'hybrid',
+        } as MetaCouncilConfigInput,
+        sessionConfig: body.config,
+      };
+
+      const session = await dynamicPipeline.run(body.question, options);
+      await sessionRepository.create(session);
+
+      return {
+        sessionId: session.id,
+        status: session.status,
+        finalAnswer: session.finalAnswer,
+        finalConfidence: session.finalConfidence,
+        totalTokens: session.totalTokens,
+        totalDurationMs: session.totalDurationMs,
+        correctionRounds: session.correctionRounds,
+        stageCount: session.stages.length,
+        // Include dynamic config info
+        dynamicConfig: session.dynamicConfig ? {
+          complexity: session.dynamicConfig.meta?.complexity,
+          domain: session.dynamicConfig.meta?.domain,
+          planningMode: session.dynamicConfig.meta?.planningMode,
+          reasoning: session.dynamicConfig.meta?.reasoning,
+          councilSize: session.dynamicConfig.council.size,
+        } : undefined,
+      };
+    }
+    
+    // Standard mode: use preset or custom members
     let members: CouncilMember[];
     let config: Partial<SessionConfig>;
 

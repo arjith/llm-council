@@ -95,8 +95,8 @@ export function HomePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim() || isRunning) return;
+    // Just set isRunning - the useEffect in useCouncilProgress will start the WebSocket
     setIsRunning(true);
-    councilProgress.start();
   };
 
   const handleCancel = () => {

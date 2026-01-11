@@ -155,12 +155,22 @@ export function useCouncilProgress(question: string, options?: {
   const calculateProgress = useCallback((stage: CouncilStage, members: MemberProgress[]): number => {
     const baseProgress = STAGE_WEIGHTS[stage] ?? 0;
     
-    if (stage === 'opinions' || stage === 'review') {
+    if (stage === 'opinions') {
+      // opinions stage: 5% -> 40%
       const completedMembers = members.filter(m => m.status === 'complete').length;
       const totalMembers = members.length || 1;
-      const stageRange = stage === 'opinions' ? 35 : 20; // opinions: 5-40, review: 40-60
+      const stageRange = 35; // 40 - 5 = 35
       const memberProgress = (completedMembers / totalMembers) * stageRange;
-      return Math.min(baseProgress, STAGE_WEIGHTS.planning + memberProgress);
+      return STAGE_WEIGHTS.planning + memberProgress; // 5 + progress towards 40
+    }
+    
+    if (stage === 'review') {
+      // review stage: 40% -> 60%  
+      const completedMembers = members.filter(m => m.status === 'complete').length;
+      const totalMembers = members.length || 1;
+      const stageRange = 20; // 60 - 40 = 20
+      const memberProgress = (completedMembers / totalMembers) * stageRange;
+      return STAGE_WEIGHTS.opinions + memberProgress; // 40 + progress towards 60
     }
     
     return baseProgress;
@@ -374,6 +384,13 @@ export function useCouncilProgress(question: string, options?: {
       onComplete(state.sessionId);
     }
   }, [state.isComplete, state.sessionId, onComplete]);
+
+  // Start connection when enabled becomes true
+  useEffect(() => {
+    if (enabled && question.trim() && !wsRef.current) {
+      start();
+    }
+  }, [enabled, question, start]);
 
   // Cleanup on unmount
   useEffect(() => {

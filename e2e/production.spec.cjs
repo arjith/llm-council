@@ -170,7 +170,11 @@ test.describe('Production - Session View', () => {
 test.describe('Production - Full Council Flow (Long Running)', () => {
   // This test submits a real question and waits for the council to complete
   // It can take 60-180+ seconds depending on the number of models and iterations
-  // ENABLED for E2E validation - requires backend with Azure OpenAI configured
+  // SKIP by default - requires backend API with Azure OpenAI configured and running
+  // To run: Set ENABLE_FULL_COUNCIL_TEST=true environment variable
+  
+  const skipReason = 'Requires backend API with Azure OpenAI. Set ENABLE_FULL_COUNCIL_TEST=true to run.';
+  test.skip(!process.env.ENABLE_FULL_COUNCIL_TEST, skipReason);
   
   test.setTimeout(PROD_TIMEOUTS.councilSession + 120000); // 17 minutes total
 

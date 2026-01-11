@@ -71,8 +71,11 @@ interface WSMessage {
   stage?: string;
   memberName?: string;
   memberModel?: string;
+  memberId?: string;
+  model?: string;
   latencyMs?: number;
   text?: string;
+  message?: string;
   timestamp?: string;
   winner?: string | null;
   confidence?: number;
@@ -86,6 +89,14 @@ interface WSMessage {
   config?: DynamicConfig;
   finalAnswer?: string;
   finalConfidence?: number;
+  analysis?: DynamicConfig & { members?: Array<{ model: string; role: string }> };
+  session?: {
+    id?: string;
+    finalAnswer?: string;
+    finalConfidence?: number;
+    totalDurationMs?: number;
+    dynamicConfig?: DynamicConfig;
+  };
 }
 
 const STAGE_WEIGHTS: Record<CouncilStage, number> = {
@@ -160,11 +171,13 @@ export function useCouncilProgress(question: string, options?: {
     if (!enabled || !question.trim() || wsRef.current) return;
 
     const params = new URLSearchParams();
+    params.set('question', question);
     if (useDynamic) params.set('dynamic', 'true');
     if (narrate) params.set('narrate', 'true');
+    if (preset) params.set('preset', preset);
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/council/ws?${params}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/ws/run?${params}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -176,14 +189,7 @@ export function useCouncilProgress(question: string, options?: {
         stage: 'planning',
         narrative: DEFAULT_NARRATIVES.planning,
       }));
-
-      // Send the question to start the council
-      ws.send(JSON.stringify({
-        type: 'run',
-        question,
-        preset,
-        useDynamic,
-      }));
+      // Question is sent via query params, no message needed
     };
 
     ws.onmessage = (event) => {
@@ -196,8 +202,31 @@ export function useCouncilProgress(question: string, options?: {
           switch (msg.type) {
             case 'plan:ready':
               newState.stage = 'opinions';
-              newState.dynamicConfig = msg.config;
-              newState.narrative = `Council configured: ${msg.config?.complexity ?? 'standard'} complexity`;
+              // API sends analysis object with complexity, domain, etc.
+              const analysis = msg.analysis;
+              const config = msg.config;
+              newState.dynamicConfig = {
+                complexity: analysis?.complexity ?? config?.complexity,
+                domain: analysis?.domain ?? config?.domain,
+                reasoning: analysis?.reasoning ?? config?.reasoning,
+                councilSize: analysis?.councilSize ?? config?.councilSize,
+              };
+              newState.narrative = `Council configured: ${analysis?.complexity ?? config?.complexity ?? 'standard'} complexity`;
+              // Pre-populate members from analysis if available
+              if (analysis?.members) {
+                newState.members = analysis.members.map((m, i) => ({
+                  id: `member-${i}`,
+                  name: m.model,
+                  model: m.model,
+                  role: m.role,
+                  status: 'waiting' as MemberStatus,
+                }));
+              }
+              break;
+
+            case 'session:start':
+              newState.stage = 'opinions';
+              newState.narrative = DEFAULT_NARRATIVES.opinions;
               break;
 
             case 'stage:start':
@@ -206,35 +235,44 @@ export function useCouncilProgress(question: string, options?: {
               break;
 
             case 'stage:complete':
-              // Move to next stage
+            case 'stage:end':
+              // Move to next stage (API sends stage:end)
               break;
 
             case 'member:start':
-              const existingMember = newState.members.find(m => m.name === msg.memberName);
-              if (!existingMember && msg.memberName) {
+            case 'member:request':
+              // API sends member:request when starting
+              const memberName = msg.memberName ?? msg.memberId;
+              const existingMember = newState.members.find(m => m.name === memberName || m.id === msg.memberId);
+              if (!existingMember && memberName) {
                 newState.members = [...newState.members, {
-                  id: msg.memberName,
-                  name: msg.memberName,
-                  model: msg.memberModel ?? 'unknown',
+                  id: msg.memberId ?? memberName,
+                  name: memberName,
+                  model: msg.memberModel ?? msg.model ?? 'unknown',
                   role: 'opinion-giver',
                   status: 'querying',
                 }];
               } else if (existingMember) {
                 newState.members = newState.members.map(m => 
-                  m.name === msg.memberName ? { ...m, status: 'querying' as MemberStatus } : m
+                  (m.name === memberName || m.id === msg.memberId) ? { ...m, status: 'querying' as MemberStatus } : m
                 );
               }
               break;
 
             case 'member:complete':
+            case 'member:response':
+              // API sends member:response when complete
+              const respMemberName = msg.memberName ?? msg.memberId;
               newState.members = newState.members.map(m =>
-                m.name === msg.memberName 
+                (m.name === respMemberName || m.id === msg.memberId)
                   ? { ...m, status: 'complete' as MemberStatus, durationMs: msg.latencyMs }
                   : m
               );
               break;
 
             case 'vote:result':
+            case 'voting:complete':
+              // API sends voting:complete
               newState.stage = 'voting';
               newState.voting = {
                 winner: msg.winner,
@@ -258,9 +296,12 @@ export function useCouncilProgress(question: string, options?: {
               break;
 
             case 'session:complete':
+            case 'complete':
+            case 'session:end':
+              // API sends 'complete' or 'session:end'
               newState.stage = 'complete';
               newState.isComplete = true;
-              newState.sessionId = msg.sessionId;
+              newState.sessionId = msg.sessionId ?? (msg as { session?: { id?: string } }).session?.id;
               newState.overallProgress = 100;
               newState.narrative = DEFAULT_NARRATIVES.complete;
               break;
@@ -273,7 +314,7 @@ export function useCouncilProgress(question: string, options?: {
               break;
 
             case 'error':
-              newState.error = msg.text ?? 'An error occurred';
+              newState.error = msg.text ?? msg.message ?? 'An error occurred';
               break;
           }
 

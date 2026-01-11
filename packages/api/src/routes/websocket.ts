@@ -7,6 +7,7 @@ import {
   createDynamicCouncilPipeline,
   type NarratorEvent,
 } from '@llm-council/core';
+import { sessionRepository } from '../services/repository.js';
 
 // Active WebSocket connections by session ID
 const connections = new Map<string, Set<WebSocket>>();
@@ -108,6 +109,9 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         const session = await dynamicPipeline.run(query.question, { config });
+        
+        // Save session to repository so it can be retrieved later
+        await sessionRepository.create(session);
         
         socket.send(JSON.stringify({
           type: 'complete',
@@ -316,6 +320,9 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Flush final narration
       await narrator.flush();
+      
+      // Save session to repository so it can be retrieved later
+      await sessionRepository.create(session);
 
       socket.send(JSON.stringify({
         type: 'complete',

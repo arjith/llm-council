@@ -24,7 +24,10 @@ export interface CompletionOptions {
   topP?: number;
   stop?: string[];
   seed?: number;
-  responseFormat?: 'text' | 'json_object';
+  responseFormat?: 
+    | 'text' 
+    | 'json_object' 
+    | { type: 'json_schema'; json_schema: { name: string; strict?: boolean; schema: object } };
   reasoningEffort?: 'low' | 'medium' | 'high'; // For o-series models
 }
 

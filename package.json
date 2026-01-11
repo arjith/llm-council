@@ -27,10 +27,17 @@
     "build": "pnpm -r run build",
     "build:core": "pnpm --filter @llm-council/core build",
     "test": "pnpm -r run test",
+    "test:e2e": "playwright test --config=playwright.config.cjs",
+    "test:e2e:ui": "playwright test --config=playwright.config.cjs --ui",
+    "test:e2e:headed": "playwright test --config=playwright.config.cjs --headed",
+    "test:e2e:debug": "playwright test --config=playwright.config.cjs --debug",
+    "test:e2e:deployed": "playwright test --config=playwright.config.cjs",
+    "test:report": "playwright show-report",
     "lint": "pnpm -r run lint",
     "clean": "pnpm -r run clean && rimraf node_modules"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.0",
     "concurrently": "^9.2.1",
     "kill-port": "^2.0.1",

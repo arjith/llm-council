@@ -165,6 +165,42 @@ curl -X POST http://localhost:3001/api/council/run \
   }'
 ```
 
+## 🧪 Testing
+
+### E2E Tests with Playwright
+
+The project includes comprehensive end-to-end tests covering all major user flows.
+
+```bash
+# Run tests locally (starts dev server automatically)
+pnpm test:e2e
+
+# Run tests with headed browser (visible)
+pnpm test:e2e:headed
+
+# Run tests with Playwright UI (interactive debugging)
+pnpm test:e2e:ui
+
+# Run tests against deployed endpoint
+PLAYWRIGHT_BASE_URL=https://your-deployed-url.com pnpm test:e2e
+
+# View test report
+pnpm test:report
+```
+
+#### Test Coverage
+
+| Test Suite | Tests | Description |
+|------------|-------|-------------|
+| `homepage.spec.cjs` | 10 | Hero section, inputs, presets, tooltips |
+| `council-flow.spec.cjs` | 15 | Full E2E flows - typing, submission, results |
+| `session-detail.spec.cjs` | 20 | Debate/Debug tabs, member cards, timeline |
+| `api-integration.spec.cjs` | 10 | API mocking and response handling |
+| `navigation.spec.cjs` | 15 | Routing, deep links, keyboard navigation |
+| `accessibility.spec.cjs` | 12 | Headings, labels, focus indicators, mobile |
+| `inline-config.spec.cjs` | 7 | Config panel sections and interactions |
+| `session.spec.cjs` | 5 | Error states, tab navigation |
+
 ## 🎯 Architecture
 
 ```

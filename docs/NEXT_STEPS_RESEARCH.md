@@ -1,6 +1,6 @@
 # LLM Council - Next Steps Research & Architecture Improvements
 
-> **Document Version**: 1.1  
+> **Document Version**: 1.2  
 > **Last Updated**: January 11, 2026  
 > **Purpose**: Comprehensive research for future enhancements to the LLM Council framework  
 > **Test Status**: ✅ 109/109 tests passing (including E2E council flow)
@@ -10,7 +10,7 @@
 ## Table of Contents
 
 1. [Current Architecture Overview](#current-architecture-overview)
-2. [Skipped Tests Analysis](#skipped-tests-analysis)
+2. [Smart Progress Indicators](#smart-progress-indicators) ⭐ **NEW**
 3. [Azure Queue Storage for Async Processing](#azure-queue-storage-for-async-processing)
 4. [Persistent Storage with Cosmos DB](#persistent-storage-with-cosmos-db)
 5. [RAG Integration with Azure AI Search](#rag-integration-with-azure-ai-search)
@@ -59,43 +59,267 @@ Frontend (React) → POST /api/council/run → Fastify API → CouncilPipeline
 
 ---
 
-## Skipped Tests Analysis
+## Smart Progress Indicators
 
-### Why Tests Are Skipped
+### The Problem
 
-| Test File | Skipped Tests | Reason |
-|-----------|---------------|--------|
-| `e2e/session.spec.cjs` | 3 tests | Tests require real session data; use `test.skip()` conditionally |
-| `e2e/production.spec.cjs` | 1 test | Full council flow requires real Azure OpenAI API |
+The current "Convening Council..." spinner provides **no feedback** for 30-120+ seconds:
 
-### Session Tests (Conditional Skip)
+```
+User clicks "Ask Council"
+       ↓
+[Spinning loader for 120s with no updates]
+       ↓
+Results appear suddenly
+```
 
-```javascript
-// These tests skip if no sessions exist
-test('should show Debate and Debug tabs', async ({ page }) => {
-  const sessionId = await getFirstSessionId(page);
-  if (!sessionId) {
-    test.skip(true, 'No sessions available');
-    return;
+This creates anxiety and uncertainty. Users don't know:
+- Is it working?
+- Which model is responding?
+- How much longer will it take?
+
+### Inspiration: Claude Code's Progress Updates
+
+Claude Code uses **real-time progress indicators** that show:
+- Current operation being performed
+- File/resource being processed
+- Estimated progress through the task
+
+### Proposed UX
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  🔄 Convening Council...                                │
+│  ━━━━━━━━━━━━━━━━━━━━━━━░░░░░░░░░░░░  60%               │
+│                                                         │
+│  📋 Stage 1: Opinions (3/5 complete)                    │
+│                                                         │
+│  ✅ GPT-5 Primary responded (2.8s)                      │
+│  ✅ o4-mini Reasoner responded (1.2s)                   │
+│  ✅ GPT-4o Analyst responded (3.1s)                     │
+│  🔵 Claude Sonnet querying...                           │
+│  ⏳ Gemini Pro waiting...                               │
+│                                                         │
+│  💬 Latest: "Analyzing the ethical implications..."     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Implementation Options
+
+#### Option 1: Server-Sent Events (SSE) Streaming
+
+Azure OpenAI supports streaming via `stream: true`:
+
+```typescript
+// API endpoint with SSE
+app.post('/api/council/run-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  const pipeline = new CouncilPipeline(adapter);
+  
+  // Subscribe to pipeline events
+  pipeline.on('member:start', (data) => {
+    res.write(`event: progress\ndata: ${JSON.stringify({
+      type: 'member_start',
+      member: data.member.name,
+      stage: data.stage
+    })}\n\n`);
+  });
+  
+  pipeline.on('member:complete', (data) => {
+    res.write(`event: progress\ndata: ${JSON.stringify({
+      type: 'member_complete',
+      member: data.member.name,
+      duration: data.durationMs,
+      preview: data.response.content.slice(0, 100)
+    })}\n\n`);
+  });
+  
+  pipeline.on('stage:complete', (data) => {
+    res.write(`event: progress\ndata: ${JSON.stringify({
+      type: 'stage_complete',
+      stage: data.stage,
+      progress: calculateProgress(data)
+    })}\n\n`);
+  });
+  
+  const session = await pipeline.run(req.body.question, members, config);
+  
+  res.write(`event: complete\ndata: ${JSON.stringify(session)}\n\n`);
+  res.end();
+});
+```
+
+Frontend consumption:
+
+```typescript
+const eventSource = new EventSource('/api/council/run-stream');
+
+eventSource.addEventListener('progress', (event) => {
+  const data = JSON.parse(event.data);
+  updateProgressUI(data);
+});
+
+eventSource.addEventListener('complete', (event) => {
+  const session = JSON.parse(event.data);
+  setSession(session);
+  eventSource.close();
+});
+```
+
+**Pros**: Simple, browser-native, no additional infrastructure  
+**Cons**: Unidirectional, connection can timeout on long operations
+
+#### Option 2: WebSocket with Azure SignalR Service
+
+Azure SignalR Service provides managed WebSocket connections:
+
+```typescript
+// Server-side with SignalR
+import { SignalR } from '@azure/functions';
+
+const signalR = output.signalR({
+  hubName: 'councilHub',
+  connectionInfo: { connectionStringSetting: 'AzureSignalRConnectionString' }
+});
+
+// Send progress updates
+await context.sendSignalR({
+  target: 'progressUpdate',
+  arguments: [{
+    sessionId: job.id,
+    stage: 'opinions',
+    member: 'GPT-5',
+    status: 'complete',
+    progress: 60
+  }]
+});
+```
+
+Frontend with SignalR client:
+
+```typescript
+import * as signalR from '@microsoft/signalr';
+
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl('/api/negotiate')
+  .withAutomaticReconnect()
+  .build();
+
+connection.on('progressUpdate', (data) => {
+  updateProgressUI(data);
+});
+
+await connection.start();
+```
+
+**Pros**: Bidirectional, highly scalable, auto-reconnect, works with Azure Functions  
+**Cons**: Additional Azure resource, more complex setup
+
+#### Option 3: LLM-Powered "Update Narrator" (Claude Code Style)
+
+Use a lightweight LLM to generate human-friendly progress summaries:
+
+```typescript
+// After each significant event, summarize for user
+async function narrateProgress(events: ProgressEvent[]): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini', // Fast, cheap model
+    messages: [{
+      role: 'system',
+      content: `You are a progress narrator. Generate a brief, friendly 1-sentence update 
+                about what the AI council is currently doing. Be specific but concise.`
+    }, {
+      role: 'user',
+      content: `Events: ${JSON.stringify(events)}`
+    }],
+    max_tokens: 50
+  });
+  
+  return response.choices[0].message.content;
+}
+
+// Example outputs:
+// "GPT-5 is analyzing the ethical dimensions while o4-mini reasons through the technical constraints..."
+// "The council has gathered 4 opinions and is now entering the review phase..."
+// "Final voting is underway - 3 members have cast their votes so far..."
+```
+
+**Pros**: Human-friendly, engaging, contextual  
+**Cons**: Additional API calls, slight latency, cost
+
+### Recommended Approach
+
+Combine **SSE streaming** with **staged progress calculation**:
+
+1. **Phase 1**: Add SSE endpoint with real-time events
+2. **Phase 2**: Add progress percentage calculation
+3. **Phase 3**: (Optional) Add LLM narrator for premium UX
+
+### Progress Calculation
+
+```typescript
+function calculateProgress(state: PipelineState): number {
+  const weights = {
+    opinions: 40,   // 5 members × 8% each
+    review: 20,     // 5 members × 4% each
+    voting: 20,     // 5 members × 4% each
+    synthesis: 20   // Final step
+  };
+  
+  let progress = 0;
+  
+  // Completed stages
+  for (const stage of state.completedStages) {
+    progress += weights[stage];
   }
-  // ... test code
-});
+  
+  // Current stage partial progress
+  if (state.currentStage) {
+    const stageWeight = weights[state.currentStage];
+    const memberProgress = state.completedMembers / state.totalMembers;
+    progress += stageWeight * memberProgress;
+  }
+  
+  return Math.round(progress);
+}
 ```
 
-### Production Test (Hardcoded Skip)
+### UI Components
 
-```javascript
-test.describe('Production - Full Council Flow (Long Running)', () => {
-  // SKIP in dev/CI - requires real backend API with Azure OpenAI configured
-  test.skip(true, 'Requires production backend with real API');
-  // ...
-});
+```typescript
+interface ProgressState {
+  stage: 'opinions' | 'review' | 'voting' | 'synthesis';
+  stageProgress: number;
+  overallProgress: number;
+  members: {
+    name: string;
+    model: string;
+    status: 'waiting' | 'querying' | 'complete' | 'error';
+    duration?: number;
+    preview?: string;
+  }[];
+  narrative?: string;
+}
+
+const CouncilProgress: React.FC<{ state: ProgressState }> = ({ state }) => (
+  <div className="space-y-4">
+    <ProgressBar value={state.overallProgress} />
+    <StageIndicator stage={state.stage} progress={state.stageProgress} />
+    <MemberStatusList members={state.members} />
+    {state.narrative && <NarrativeText text={state.narrative} />}
+  </div>
+);
 ```
 
-### How to Run All Tests
+### Documentation Links
 
-1. **Ensure sessions exist**: Run a council query first
-2. **For production test**: Remove the skip, set proper Azure credentials, run against production
+- [Azure OpenAI Streaming](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/streaming)
+- [Server-Sent Events MDN](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+- [Azure SignalR Service Overview](https://learn.microsoft.com/en-us/azure/azure-signalr/signalr-overview)
+- [SignalR with Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-signalr-service)
 
 ---
 
@@ -610,7 +834,17 @@ const searchContext = results.webPages.value
 
 ## Implementation Roadmap
 
-### Phase 1: Persistent Storage (Week 1-2)
+### Phase 0: Smart Progress Indicators (Week 1) ⭐ **PRIORITY**
+
+| Task | Priority | Complexity |
+|------|----------|------------|
+| Add SSE streaming endpoint | High | Medium |
+| Emit pipeline events from CouncilPipeline | High | Low |
+| Create `CouncilProgress` React component | High | Medium |
+| Add progress calculation logic | Medium | Low |
+| (Optional) Add LLM narrator | Low | Medium |
+
+### Phase 1: Persistent Storage (Week 2-3)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -619,7 +853,7 @@ const searchContext = results.webPages.value
 | Add migration from in-memory | Medium | Low |
 | Update env vars and configuration | High | Low |
 
-### Phase 2: Async Queue Processing (Week 3-4)
+### Phase 2: Async Queue Processing (Week 4-5)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -629,7 +863,7 @@ const searchContext = results.webPages.value
 | Add status polling endpoint | High | Medium |
 | Update frontend for async flow | Medium | Medium |
 
-### Phase 3: Tool Calling (Week 5-6)
+### Phase 3: Tool Calling (Week 6-7)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -639,7 +873,7 @@ const searchContext = results.webPages.value
 | Add calculator tool | Low | Low |
 | Add code execution tool | Low | High |
 
-### Phase 4: RAG & Web Search (Week 7-8)
+### Phase 4: RAG & Web Search (Week 8+)
 
 | Task | Priority | Complexity |
 |------|----------|------------|
@@ -688,7 +922,8 @@ const searchContext = results.webPages.value
 
 | Feature | Effort | Impact | Priority | Recommendation |
 |---------|--------|--------|----------|----------------|
-| Cosmos DB Storage | Low | High | 🔴 Critical | Start here - prevents data loss |
+| **Smart Progress** | Low | High | 🔴 Critical | **Start here - improves UX immediately** |
+| Cosmos DB Storage | Low | High | 🔴 Critical | Prevents data loss |
 | Queue Processing | Medium | High | 🟡 High | Enables scaling and better UX |
 | Tool Calling | High | Medium | 🟢 Medium | Adds powerful capabilities |
 | RAG with AI Search | High | High | 🟡 High | Domain-specific accuracy |

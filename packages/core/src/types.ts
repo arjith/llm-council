@@ -80,7 +80,15 @@ export const CouncilRoleSchema = z.enum([
   'reviewer',         // Second stage: review and critique
   'synthesizer',      // Third stage: synthesize final answer
   'backup',           // Self-correction: backup member
-  'arbiter'           // Tie-breaker when voting is deadlocked
+  'arbiter',          // Tie-breaker when voting is deadlocked
+  // Extended roles for dynamic councils
+  'devil-advocate',   // Challenges consensus, prevents groupthink
+  'fact-checker',     // Verifies claims and flags misinformation
+  'domain-expert',    // Specialized knowledge in specific areas
+  'moderator',        // Guides discussion flow
+  'skeptic',          // Questions assumptions
+  'creative',         // Generates novel/unconventional ideas
+  'critic'            // Provides constructive criticism
 ]);
 
 export type CouncilRole = z.infer<typeof CouncilRoleSchema>;
@@ -94,6 +102,9 @@ export const CouncilMemberSchema = z.object({
   weight: z.number().min(0).max(1).default(1),  // For weighted voting
   priority: z.number().int().default(0),         // Order of invocation
   isActive: z.boolean().default(true),
+  // New fields for dynamic councils
+  persona: z.string().optional(),                // Custom persona description
+  temperature: z.number().min(0).max(2).optional(), // Override per-member temperature
   metadata: z.record(z.unknown()).optional(),
 });
 
@@ -289,3 +300,267 @@ export const ExportOptionsSchema = z.object({
 });
 
 export type ExportOptions = z.infer<typeof ExportOptionsSchema>;
+
+// =============================================================================
+// Dynamic Council - Meta Council Configuration
+// =============================================================================
+
+export const ComplexityLevelSchema = z.enum([
+  'simple',      // Basic factual questions, quick answers
+  'moderate',    // Requires some reasoning
+  'complex',     // Multi-faceted, requires deep analysis
+  'expert'       // Specialized domain knowledge required
+]);
+
+export type ComplexityLevel = z.infer<typeof ComplexityLevelSchema>;
+
+export const DomainTypeSchema = z.enum([
+  'general',     // General knowledge
+  'technical',   // Programming, engineering, science
+  'creative',    // Writing, art, design
+  'ethical',     // Moral/ethical dilemmas
+  'factual',     // Pure fact retrieval
+  'analytical',  // Data analysis, logical reasoning
+  'strategic'    // Planning, decision-making
+]);
+
+export type DomainType = z.infer<typeof DomainTypeSchema>;
+
+export const PlanningModeSchema = z.enum([
+  'static',      // Use keyword/rule-based selection
+  'llm',         // Use LLM to decide council configuration
+  'hybrid'       // Start with rules, escalate to LLM for complex
+]);
+
+export type PlanningMode = z.infer<typeof PlanningModeSchema>;
+
+export const MetaCouncilConfigSchema = z.object({
+  planningMode: PlanningModeSchema.optional().default('hybrid'),
+  plannerModel: z.string().optional().default('gpt-5-mini'),  // Fast model for planning
+  complexity: ComplexityLevelSchema.optional(),
+  domain: DomainTypeSchema.optional(),
+  reasoning: z.string().optional(),  // LLM's reasoning for config choice
+  
+  // Static rules configuration
+  staticRules: z.object({
+    // Keywords that trigger specific presets
+    keywords: z.array(z.object({
+      pattern: z.string(),  // Regex pattern as string
+      preset: z.string(),
+      allowIterations: z.boolean().default(false),
+    })).optional(),
+    
+    // Length thresholds for complexity inference
+    lengthThresholds: z.object({
+      short: z.number().default(100),
+      medium: z.number().default(500),
+      long: z.number().default(1000),
+    }).optional(),
+    
+    // Default fallback
+    defaultPreset: z.string().default('standard'),
+  }).optional(),
+});
+
+export type MetaCouncilConfig = z.infer<typeof MetaCouncilConfigSchema>;
+// Input type for partial configuration
+export type MetaCouncilConfigInput = z.input<typeof MetaCouncilConfigSchema>;
+
+// =============================================================================
+// Dynamic Council - Iteration Control
+// =============================================================================
+
+export const IterationStrategySchema = z.enum([
+  'refine',      // Same council refines answer each iteration
+  'escalate',    // Add more members each iteration
+  'specialize',  // Route to specialist sub-councils
+  'debate'       // Structured back-and-forth between positions
+]);
+
+export type IterationStrategy = z.infer<typeof IterationStrategySchema>;
+
+export const IterationConfigSchema = z.object({
+  // Enable/disable iteration
+  enabled: z.boolean().optional().default(false),
+  
+  // Hard limits (snowball prevention)
+  maxIterations: z.number().int().min(1).max(10).optional().default(3),
+  maxTotalTokens: z.number().positive().optional().default(100000),
+  maxDurationMs: z.number().positive().optional().default(120000),  // 2 minutes
+  maxDepth: z.number().int().min(1).max(5).optional().default(2),   // For hierarchical
+  
+  // Termination conditions
+  convergenceThreshold: z.number().min(0).max(1).optional().default(0.85),
+  improvementThreshold: z.number().min(0).max(1).optional().default(0.05),
+  
+  // Strategy
+  strategy: IterationStrategySchema.optional().default('refine'),
+  
+  // Per-iteration member adjustments
+  escalationConfig: z.object({
+    addMembersPerIteration: z.number().int().min(0).max(3).default(1),
+    maxTotalMembers: z.number().int().min(3).max(15).default(9),
+    preferReasoning: z.boolean().default(true),  // Prefer reasoning models
+  }).optional(),
+});
+
+export type IterationConfig = z.infer<typeof IterationConfigSchema>;
+export type IterationConfigInput = z.input<typeof IterationConfigSchema>;
+
+export const IterationDecisionSchema = z.object({
+  iteration: z.number().int(),
+  action: z.enum(['continue', 'stop', 'escalate']),
+  reason: z.string(),
+  confidence: z.number().min(0).max(1),
+  tokensUsed: z.number().int(),
+  durationMs: z.number(),
+});
+
+export type IterationDecision = z.infer<typeof IterationDecisionSchema>;
+
+export const IterationStateSchema = z.object({
+  currentIteration: z.number().int().default(0),
+  totalIterations: z.number().int().default(0),
+  tokensSoFar: z.number().int().default(0),
+  elapsedMs: z.number().default(0),
+  startTime: z.string().datetime().optional(),
+  confidenceHistory: z.array(z.number()).default([]),
+  improvements: z.array(z.number()).default([]),
+  decisions: z.array(IterationDecisionSchema).default([]),
+});
+
+export type IterationState = z.infer<typeof IterationStateSchema>;
+
+// =============================================================================
+// Dynamic Council - Memory & Context
+// =============================================================================
+
+export const MemoryConfigSchema = z.object({
+  // Enable memory/context sharing
+  enabled: z.boolean().optional().default(true),
+  
+  // Memory compression
+  compressionEnabled: z.boolean().optional().default(true),
+  maxContextTokens: z.number().positive().optional().default(8000),
+  
+  // What to persist
+  persistConsensus: z.boolean().optional().default(true),
+  persistDisagreements: z.boolean().optional().default(true),
+  persistKeyInsights: z.boolean().optional().default(true),
+  
+  // Long-term memory (optional, for future sessions)
+  longTermEnabled: z.boolean().optional().default(false),
+});
+
+export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+export type MemoryConfigInput = z.input<typeof MemoryConfigSchema>;
+
+export const CouncilMemorySchema = z.object({
+  // Short-term: Current iteration context
+  shortTerm: z.object({
+    question: z.string(),
+    currentIteration: z.number().int(),
+    previousResponses: z.array(z.object({
+      iteration: z.number().int(),
+      memberId: z.string(),
+      content: z.string(),
+      confidence: z.number().optional(),
+    })).default([]),
+    currentConfidence: z.number().default(0),
+    keyInsights: z.array(z.string()).default([]),
+  }),
+  
+  // Working: Cross-iteration context
+  working: z.object({
+    consensusPoints: z.array(z.string()).default([]),
+    disagreements: z.array(z.string()).default([]),
+    openQuestions: z.array(z.string()).default([]),
+    refinements: z.array(z.object({
+      iteration: z.number().int(),
+      what: z.string(),
+      why: z.string(),
+    })).default([]),
+  }),
+  
+  // Compressed summaries for context injection
+  compressed: z.object({
+    summary: z.string().default(''),
+    tokenCount: z.number().int().default(0),
+    lastUpdated: z.string().datetime().optional(),
+  }).optional(),
+});
+
+export type CouncilMemory = z.infer<typeof CouncilMemorySchema>;
+
+export const IterationContextSchema = z.object({
+  iteration: z.number().int(),
+  previousSummary: z.string(),
+  keyDecisions: z.array(z.string()),
+  openIssues: z.array(z.string()),
+  confidenceTrend: z.array(z.number()),
+  instructions: z.string(),
+});
+
+export type IterationContext = z.infer<typeof IterationContextSchema>;
+
+// =============================================================================
+// Dynamic Council - Complete Configuration
+// =============================================================================
+
+export const DynamicCouncilConfigSchema = z.object({
+  // Meta configuration
+  meta: MetaCouncilConfigSchema.optional(),
+  
+  // Council composition
+  council: z.object({
+    size: z.number().int().min(3).max(15).default(5),
+    members: z.array(z.object({
+      model: z.string(),
+      role: CouncilRoleSchema,
+      persona: z.string().optional(),
+      systemPrompt: z.string().optional(),
+      temperature: z.number().min(0).max(2).optional(),
+      weight: z.number().min(0).max(2).default(1),
+    })),
+    voting: z.object({
+      method: VotingMethodSchema.default('majority'),
+      threshold: z.number().min(0).max(1).optional(),
+    }).optional(),
+  }),
+  
+  // Iteration settings
+  iteration: IterationConfigSchema.optional(),
+  
+  // Memory settings
+  memory: MemoryConfigSchema.optional(),
+});
+
+export type DynamicCouncilConfig = z.infer<typeof DynamicCouncilConfigSchema>;
+
+// =============================================================================
+// Dynamic Council - Planning Output (JSON Schema for LLM)
+// =============================================================================
+
+export const CouncilPlanSchema = z.object({
+  // Analysis
+  complexity: ComplexityLevelSchema,
+  domain: DomainTypeSchema,
+  reasoning: z.string(),
+  
+  // Recommended configuration
+  councilSize: z.number().int().min(3).max(9),
+  roles: z.array(z.object({
+    role: CouncilRoleSchema,
+    model: z.string(),
+    persona: z.string().optional(),
+    weight: z.number().optional(),
+  })),
+  votingMethod: VotingMethodSchema,
+  
+  // Iteration recommendation
+  allowIterations: z.boolean(),
+  maxIterations: z.number().int().min(1).max(5).optional(),
+  iterationStrategy: IterationStrategySchema.optional(),
+});
+
+export type CouncilPlan = z.infer<typeof CouncilPlanSchema>;

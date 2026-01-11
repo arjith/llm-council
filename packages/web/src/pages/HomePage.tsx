@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Send, 
-  Loader2, 
   Sparkles, 
   Users, 
   Brain, 
@@ -12,11 +11,14 @@ import {
   AlertCircle,
   Clock,
   ChevronRight,
-  Settings
+  Settings,
+  Square
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InlineConfig } from '@/components/InlineConfig';
 import { ConfidenceBadge, ConfidenceBar } from '@/components/ConfidenceBadge';
+import { CouncilProgress } from '@/components/CouncilProgress';
+import { useCouncilProgress } from '@/hooks/useCouncilProgress';
 
 // Match API response from /api/council/presets
 interface Preset {
@@ -52,6 +54,21 @@ export function HomePage() {
   const [selectedPreset, setSelectedPreset] = useState<string>('standard');
   const [showConfig, setShowConfig] = useState(false);
   const [hoveredPreset, setHoveredPreset] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+
+  // WebSocket-based council progress
+  const handleSessionComplete = useCallback((sessionId: string) => {
+    setIsRunning(false);
+    navigate(`/session/${sessionId}`);
+  }, [navigate]);
+
+  const councilProgress = useCouncilProgress(question, {
+    enabled: isRunning,
+    useDynamic: true,
+    narrate: true,
+    preset: selectedPreset,
+    onComplete: handleSessionComplete,
+  });
 
   // Fetch presets
   const { data: presets } = useQuery<Preset[]>({
@@ -75,29 +92,16 @@ export function HomePage() {
     refetchInterval: 5000,
   });
 
-  // Run council mutation
-  const runCouncil = useMutation({
-    mutationFn: async ({ question, preset }: { question: string; preset: string }) => {
-      const res = await fetch('/api/council/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, preset }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to run council');
-      }
-      return data;
-    },
-    onSuccess: (data) => {
-      navigate(`/session/${data.sessionId}`);
-    },
-  });
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim()) return;
-    runCouncil.mutate({ question, preset: selectedPreset });
+    if (!question.trim() || isRunning) return;
+    setIsRunning(true);
+    councilProgress.start();
+  };
+
+  const handleCancel = () => {
+    councilProgress.stop();
+    setIsRunning(false);
   };
 
   const presetIcons: Record<string, React.ReactNode> = {
@@ -122,19 +126,43 @@ export function HomePage() {
         </p>
       </div>
 
-      {/* Question Form */}
-      <form onSubmit={handleSubmit} className="mb-8">
-        <div className="glass rounded-2xl p-6">
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Your Question
-          </label>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask anything... e.g., 'What are the ethical implications of AI in healthcare?'"
-            className="w-full h-32 bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-council-primary focus:border-transparent resize-none"
-            disabled={runCouncil.isPending}
-          />
+      {/* Question Form OR Council Progress */}
+      {isRunning ? (
+        <div className="mb-8 space-y-4">
+          {/* Show the question being asked */}
+          <div className="glass rounded-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm text-gray-400 mb-1">Your Question</p>
+                <p className="text-white font-medium">{question}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/30 transition-all"
+              >
+                <Square className="w-4 h-4" />
+                Cancel
+              </button>
+            </div>
+          </div>
+          
+          {/* Progress Display */}
+          <CouncilProgress progress={councilProgress} />
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="mb-8">
+          <div className="glass rounded-2xl p-6">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Your Question
+            </label>
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ask anything... e.g., 'What are the ethical implications of AI in healthcare?'"
+              className="w-full h-32 bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-council-primary focus:border-transparent resize-none"
+              disabled={isRunning}
+            />
 
           {/* Preset Selection with Hover Tooltips */}
           <div className="mt-4">
@@ -210,25 +238,16 @@ export function HomePage() {
 
             <button
               type="submit"
-              disabled={!question.trim() || runCouncil.isPending}
+              disabled={!question.trim() || isRunning}
               className={cn(
                 'flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all',
-                question.trim() && !runCouncil.isPending
+                question.trim() && !isRunning
                   ? 'bg-gradient-to-r from-council-primary to-council-secondary text-white hover:shadow-lg hover:shadow-council-primary/25'
                   : 'bg-gray-700 text-gray-400 cursor-not-allowed'
               )}
             >
-              {runCouncil.isPending ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Convening Council...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-5 h-5" />
-                  <span>Ask the Council</span>
-                </>
-              )}
+              <Send className="w-5 h-5" />
+              <span>Ask the Council</span>
             </button>
           </div>
 
@@ -241,16 +260,17 @@ export function HomePage() {
             />
           )}
         </div>
-      </form>
+        </form>
+      )}
 
       {/* Error Display */}
-      {runCouncil.isError && (
+      {councilProgress.error && (
         <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 mb-8">
           <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="font-medium text-red-400">Error</h4>
             <p className="text-sm text-gray-400">
-              {runCouncil.error?.message ?? 'Failed to run council'}
+              {councilProgress.error}
             </p>
           </div>
         </div>

@@ -104,6 +104,16 @@ body {
   animation-duration: 300ms;
 }
 
+/* Shimmer effect for progress bar */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}
+
 /* Role colors */
 .border-l-blue-500 { border-left-color: #60a5fa; }
 .border-l-purple-500 { border-left-color: #a78bfa; }
